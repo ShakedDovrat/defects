@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
@@ -26,25 +27,32 @@ class DataHandler:
             yield [cv2.imread(p, cv2.IMREAD_GRAYSCALE) for p in image_pair]
 
 
-class DefectDetector:
+class Main:
     def __init__(self, images_dir='images'):
         self.data_handler = DataHandler(images_dir)
 
     def run(self):
         for reference_image, inspection_image in self.data_handler.get():
-            DefectDetector._run_on_pair(reference_image, inspection_image)
+            detector = DefectDetector(reference_image, inspection_image)
+            detector.run()
 
-    @staticmethod
-    def _run_on_pair(reference_image, inspection_image):
-        inspection_image_registered, h, matches_image = alignImages(inspection_image, reference_image)
-        diff = cv2.absdiff(inspection_image_registered, reference_image)
+
+class DefectDetector:
+    def __init__(self, reference_image, inspection_image):
+        self.reference_image = reference_image
+        self.inspection_image = inspection_image
+
+    def run(self):
+        inspection_image_registered, h, matches_image = alignImages(self.inspection_image, self.reference_image)
+        diff = cv2.absdiff(inspection_image_registered, self.reference_image)
         plt.imshow(diff)
+        # plt.imshow(np.concatenate((inspection_image_registered, self.reference_image), axis=1))
         plt.show()
+        pass
 
 
 def main():
-    detector = DefectDetector()
-    detector.run()
+    Main().run()
 
 
 if __name__ == '__main__':
