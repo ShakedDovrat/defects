@@ -1,6 +1,9 @@
 import os
 
 import cv2
+import matplotlib.pyplot as plt
+
+from image_registration import alignImages
 
 
 def list_dir_recursive(d):
@@ -8,7 +11,7 @@ def list_dir_recursive(d):
 
 
 class DataHandler:
-    def __init__(self, images_dir='images'):
+    def __init__(self, images_dir):
         self.images_dir = images_dir
         file_paths = list_dir_recursive(self.images_dir)
         image_paths = [p for p in file_paths if '.tif' in p]
@@ -24,14 +27,23 @@ class DataHandler:
 
 
 class DefectDetector:
-    def __init__(self):
-        pass
+    def __init__(self, images_dir='images'):
+        self.data_handler = DataHandler(images_dir)
+
+    def run(self):
+        for reference_image, inspection_image in self.data_handler.get():
+            DefectDetector._run_on_pair(reference_image, inspection_image)
+
+    @staticmethod
+    def _run_on_pair(reference_image, inspection_image):
+        inspection_image_registered, h, matches_image = alignImages(inspection_image, reference_image)
+        diff = cv2.absdiff(inspection_image_registered, reference_image)
+        plt.imshow(diff)
 
 
 def main():
-    data_handler = DataHandler()
-    for image_pair in data_handler.get():
-        print(image_pair)
+    detector = DefectDetector()
+    detector.run()
 
 
 if __name__ == '__main__':
