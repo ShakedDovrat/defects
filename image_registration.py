@@ -10,13 +10,13 @@ GOOD_MATCH_PERCENT = 0.15
 
 def alignImages(im1, im2):
     # Convert images to grayscale
-    im1Gray = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
-    im2Gray = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
+    # im1Gray = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
+    # im2Gray = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
 
     # Detect ORB features and compute descriptors.
     orb = cv2.ORB_create(MAX_FEATURES)
-    keypoints1, descriptors1 = orb.detectAndCompute(im1Gray, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(im2Gray, None)
+    keypoints1, descriptors1 = orb.detectAndCompute(im1, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(im2, None)
 
     # Match features.
     matcher = cv2.DescriptorMatcher_create(cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
@@ -45,7 +45,7 @@ def alignImages(im1, im2):
     h, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
 
     # Use homography
-    height, width, channels = im2.shape
+    height, width = im2.shape
     im1Reg = cv2.warpPerspective(im1, h, (width, height))
 
     return im1Reg, h, imMatches

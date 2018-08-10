@@ -23,7 +23,7 @@ class DataHandler:
 
     def get(self):
         for image_pair in self.image_pairs:
-            yield [cv2.imread(p) for p in image_pair]
+            yield [cv2.imread(p, cv2.IMREAD_GRAYSCALE) for p in image_pair]
 
 
 class DefectDetector:
@@ -39,6 +39,7 @@ class DefectDetector:
         inspection_image_registered, h, matches_image = alignImages(inspection_image, reference_image)
         diff = cv2.absdiff(inspection_image_registered, reference_image)
         plt.imshow(diff)
+        plt.show()
 
 
 def main():
