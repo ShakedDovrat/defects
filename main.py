@@ -41,6 +41,7 @@ class Main:
 def relative_diff(a, b):
     return np.maximum(a, b) / np.minimum(a, b)
 
+
 def show_image(image):
     plt.figure()
     plt.imshow(image)
@@ -110,7 +111,12 @@ class DefectDetector:
 
 
 def main():
-    Main().run()
+    images_dir = 'images'
+    debug = True
+
+    for reference_image, inspection_image in DataHandler(images_dir).get():
+        detector = DefectDetector(reference_image, inspection_image, debug=debug)
+        detector.run()
 
 
 if __name__ == '__main__':
