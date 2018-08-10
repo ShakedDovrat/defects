@@ -21,62 +21,76 @@ class TranslationTransform:
         return [np.linalg.norm(diff, ord=2) for diff in points2 - points1]
 
     def get_transform_matrix(self):
-        h = np.eye(3)
-        h[0, 2] = self.dx
-        h[1, 2] = self.dy
-        return h
+        translation_matrix = np.eye(3)
+        translation_matrix[0, 2] = self.dx
+        translation_matrix[1, 2] = self.dy
+        return translation_matrix
+
+    def get_transform_params(self):
+        return self.dx, self.dy
 
 
-##############################################################
-# Code taken from: https://www.learnopencv.com/image-alignment-feature-based-using-opencv-c-python/
-# And modified
 MAX_FEATURES = 500
 GOOD_MATCH_PERCENT = 0.15
 
 
-def alignImages(im1, im2):
-    # Convert images to grayscale
-    # im1Gray = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
-    # im2Gray = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
+class ImageAligner:
+    def __init__(self, image1, image2, debug=False):
+        self.image1 = image1
+        self.image2 = image2
+        self.debug = debug
+        self.matches_image = None
+        self.translation_model = None
 
-    # Detect ORB features and compute descriptors.
-    orb = cv2.ORB_create(MAX_FEATURES)
-    keypoints1, descriptors1 = orb.detectAndCompute(im1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(im2, None)
+    def find_allignment(self):
+        """Code taken from: https://www.learnopencv.com/image-alignment-feature-based-using-opencv-c-python/
+        And modified"""
 
-    # Match features.
-    matcher = cv2.DescriptorMatcher_create(cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
-    matches = matcher.match(descriptors1, descriptors2, None)
+        # Detect ORB features and compute descriptors.
+        orb = cv2.ORB_create(MAX_FEATURES)
+        keypoints1, descriptors1 = orb.detectAndCompute(self.image1, None)
+        keypoints2, descriptors2 = orb.detectAndCompute(self.image2, None)
 
-    # Sort matches by score
-    matches.sort(key=lambda x: x.distance, reverse=False)
+        # Match features.
+        matcher = cv2.DescriptorMatcher_create(cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING)
+        matches = matcher.match(descriptors1, descriptors2, None)
 
-    # Remove not so good matches
-    numGoodMatches = int(len(matches) * GOOD_MATCH_PERCENT)
-    matches = matches[:numGoodMatches]
+        # Sort matches by score
+        matches.sort(key=lambda x: x.distance, reverse=False)
 
-    # Draw top matches
-    imMatches = cv2.drawMatches(im1, keypoints1, im2, keypoints2, matches, None)
-    # cv2.imwrite("matches.jpg", imMatches)
+        # Remove not so good matches
+        numGoodMatches = int(len(matches) * GOOD_MATCH_PERCENT)
+        matches = matches[:numGoodMatches]
 
-    # Extract location of good matches
-    points1 = np.zeros((len(matches), 2), dtype=np.float32)
-    points2 = np.zeros((len(matches), 2), dtype=np.float32)
+        if self.debug:
+            self.matches_image = cv2.drawMatches(self.image1, keypoints1, self.image2, keypoints2, matches, None)
 
-    for i, match in enumerate(matches):
-        points1[i, :] = keypoints1[match.queryIdx].pt
-        points2[i, :] = keypoints2[match.trainIdx].pt
+        # Extract location of good matches
+        points1 = np.zeros((len(matches), 2), dtype=np.float32)
+        points2 = np.zeros((len(matches), 2), dtype=np.float32)
 
-    # Find homography
-    # h, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
-    # x = cv2.estimateRigidTransform(points1, points2, fullAffine=False)
-    model, inliers = ransac(np.concatenate((points1, points2), axis=1), TranslationTransform,
-                            min_samples=1, residual_threshold=1)
-    h = model.get_transform_matrix()
+        for i, match in enumerate(matches):
+            points1[i, :] = keypoints1[match.queryIdx].pt
+            points2[i, :] = keypoints2[match.trainIdx].pt
 
-    # Use homography
-    height, width = im2.shape
-    im1Reg = cv2.warpPerspective(im1, h, (width, height))
+        # Find translation
+        self.translation_model, inliers = ransac(np.concatenate((points1, points2), axis=1), TranslationTransform,
+                                                 min_samples=1, residual_threshold=0.3, max_trials=200)
 
-    return im1Reg, h, imMatches
-##############################################################
+    def transform(self, image):
+        return cv2.warpPerspective(image, self.translation_model.get_transform_matrix(), list(image.shape).reverse(),
+                                   flags=cv2.INTER_NEAREST)#cv2.INTER_LINEAR)
+
+    def get_valid_mask(self, image_shape):
+        dx, dy = self.translation_model.get_transform_params()
+        dx, dy = np.int(np.round(dx)), np.int(np.round(dy))
+        mask = np.ones(image_shape, dtype=np.bool)
+        if dy > 0:
+            mask[:dy, :] = False
+        else:
+            mask[dy:, :] = False
+        if dx > 0:
+            mask[:, :dx] = False
+        else:
+            mask[:, dx:] = False
+        return mask
