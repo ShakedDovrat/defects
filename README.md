@@ -1,4 +1,9 @@
-## Solution
+## Summary
+In order to find defects, we need to align the reference image and the inspection image to a sub-pixel level 
+and compare the two images by absolute difference. Alignment is not perfect, so we want to reduce comparison 
+effects on image edges. Lastly, we need to binarize the difference image in a robust way and clean noise.
+
+## Solution Steps
 1. Registration
     1. Find sub-pixel translation using cross correlation on upsampled images.
     2. Transform the reference image to the inspection image. 
@@ -21,23 +26,23 @@
 2. Defects have an area of at least 40 pixels.
 
 ## Results
-First image
+First image - two false positives
 
 ![First image input](input/case1_inspected_image.png)
 ![First image output](output/output-image-idx-0.png)
 
-Second image
+Second image - perfect detection
 
 ![Second image input](input/case2_inspected_image.png)
 ![Second image output](output/output-image-idx-1.png)
 
-Third image
+Third image - perfect detection
 
 ![Third image input](input/case3_inspected_image.png)
 ![Third image output](output/output-image-idx-2.png)
 
-### Additional results
-Step-by-step results for the second image
+### Additional Results
+Step-by-step results for the second image. More results are in the `output` directory.
 
 ![](output/image-1-fig-0-input-inspection-image.png)
 ![](output/image-1-fig-1-diff-image-after-registration-with-reference.png)
