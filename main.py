@@ -63,9 +63,12 @@ class DefectDetector:
     def run(self):
         # self._pre_process()
         self._register()
+        # cv2.medianBlur(self.reference_image_registered, self.MEDIAN_FILTER_SIZE, self.reference_image_registered)
+        # cv2.medianBlur(self.inspection_image, self.MEDIAN_FILTER_SIZE, self.inspection_image)
         diff_image = self._diff()
+        # cv2.medianBlur(diff_image, self.MEDIAN_FILTER_SIZE, diff_image)
         joint_edges_mask = self._joint_edges()
-        JOINT_EDGES_FACTOR = 0.2
+        JOINT_EDGES_FACTOR = 1 / 3
         diff_image[joint_edges_mask] = diff_image[joint_edges_mask] * JOINT_EDGES_FACTOR
         show_image(diff_image, 'diff image lower joint edges')
         valid_diff_mask = self._diff_binarization(diff_image)
@@ -235,7 +238,7 @@ class DefectDetector:
 
     @staticmethod
     def _edges_dilate(image):
-        MORPHOLOGY_SE_SIZE = (3, 3)
+        MORPHOLOGY_SE_SIZE = (5, 5)
 
         edges = cv2.Canny(image, 100, 200)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, MORPHOLOGY_SE_SIZE)
@@ -245,8 +248,8 @@ class DefectDetector:
     def _post_process(self, mask):
         CONNECTED_COMPONENTS = True
         if CONNECTED_COMPONENTS:
-            def connected_components(mask, min_size=20):
-                nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=4)
+            def connected_components(mask, min_size=40):
+                nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
                 sizes = stats[1:, -1]  # remove background
                 nb_components = nb_components - 1  # remove background
 
@@ -260,7 +263,12 @@ class DefectDetector:
                         output_mask[output == i + 1] = True
                 show_image(output_mask, 'remove small CCs')
                 return output_mask
-            output = connected_components(mask)
+
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, self.MORPHOLOGY_SE_SIZE)
+            close = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel).astype(np.bool)
+            show_image(close, 'morph close')
+
+            output = connected_components(close)
 
         else:
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, self.MORPHOLOGY_SE_SIZE)
@@ -270,6 +278,8 @@ class DefectDetector:
             if self.debug:
                 show_image(opening)
                 show_image(closing)
+        # if self.debug:
+        #     show_image(output, 'post process')
         return output
 
 
