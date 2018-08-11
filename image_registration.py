@@ -4,9 +4,9 @@ from skimage.measure import ransac
 
 
 class TranslationTransform:
-    def __init__(self):
-        self.dx = None
-        self.dy = None
+    def __init__(self, temp_dx=None, temp_dy=None):
+        self.dx = temp_dx
+        self.dy = temp_dy
 
     def estimate(self, data):
         x1, y1, x2, y2 = data[0]
@@ -75,11 +75,11 @@ class ImageAligner:
 
         # Find translation
         self.translation_model, inliers = ransac(np.concatenate((points1, points2), axis=1), TranslationTransform,
-                                                 min_samples=1, residual_threshold=0.3, max_trials=200)
+                                                 min_samples=1, residual_threshold=0.1, max_trials=200)
 
     def transform(self, image):
         return cv2.warpPerspective(image, self.translation_model.get_transform_matrix(), list(image.shape).reverse(),
-                                   flags=cv2.INTER_NEAREST)#cv2.INTER_LINEAR)
+                                   flags=cv2.INTER_LINEAR)#cv2.INTER_CUBIC)
 
     def get_valid_mask(self, image_shape):
         dx, dy = self.translation_model.get_transform_params()

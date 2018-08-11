@@ -5,7 +5,7 @@ import cv2
 import matplotlib.pyplot as plt
 from skimage.filters import apply_hysteresis_threshold
 
-from image_registration import ImageAligner
+from image_registration import ImageAligner, TranslationTransform
 
 
 def list_dir_recursive(d):
@@ -45,6 +45,10 @@ class DefectDetector:
     # HIGH_DIFF_THRESHOLD = 1.7
     LOW_DIFF_THRESHOLD = 70
     HIGH_DIFF_THRESHOLD = 110
+    LOW_DIFF_THRESHOLD = 20
+    HIGH_DIFF_THRESHOLD = 30
+    LOW_DIFF_THRESHOLD = 20
+    HIGH_DIFF_THRESHOLD = 40
     MORPHOLOGY_SE_SIZE = (3, 3)
 
     def __init__(self, reference_image, inspection_image, debug=False):
@@ -55,12 +59,37 @@ class DefectDetector:
         self.valid_registration_mask = None
 
     def run(self):
-        self._pre_process()
+        # self._pre_process()
         self._register()
         valid_diff_mask = self._diff()
         output_mask = self._post_process(valid_diff_mask)
-        # if self.debug:
         show_image(output_mask)
+
+        print('valid_diff_mask mean = {}'.format(np.mean(valid_diff_mask.flatten())))
+        plt.close('all')
+        return
+
+        # Second type of defects:
+
+        # LOW_DIFF_THRESHOLD = 1.3
+        # HIGH_DIFF_THRESHOLD = 1.7
+        # diff_image = relative_diff(self.reference_image_registered, self.inspection_image)
+        # diff_mask = apply_hysteresis_threshold(diff_image, LOW_DIFF_THRESHOLD, HIGH_DIFF_THRESHOLD)
+        # valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
+        # if self.debug:
+        #     show_image(diff_image)
+        #     show_image(valid_diff_mask)
+        valid_diff_mask = self._diff()
+
+        MORPHOLOGY_SE_SIZE = (5, 5)
+        edges = cv2.Canny(self.inspection_image, 100, 200)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, MORPHOLOGY_SE_SIZE)
+        cv2.dilate(edges, kernel, edges)
+        show_image(edges)
+
+        diff_no_edges = np.logical_and(valid_diff_mask, np.logical_not(edges))
+        show_image(diff_no_edges, 'diff no edges')
+
         plt.close('all')
 
     def _pre_process(self):
@@ -76,10 +105,46 @@ class DefectDetector:
             show_image(self.inspection_image)
 
     def _register(self):
+        CROSS_CORELLATION = False
         alinger = ImageAligner(self.reference_image, self.inspection_image)
-        alinger.find_allignment()
+        if CROSS_CORELLATION:
+            from skimage.feature import register_translation
+            shift, error, diffphase = register_translation(self.inspection_image, self.reference_image, 1000)#, space="fourier")
+            t = TranslationTransform(*shift)
+            alinger.translation_model = t
+        else:
+            alinger.find_allignment()
         self.reference_image_registered = alinger.transform(self.reference_image)
         self.valid_registration_mask = alinger.get_valid_mask(self.reference_image.shape)
+
+        # fine-tune translation (sub-pixel):
+        def sliding_window(image, window_size, step_size=1):
+            assert divmod(window_size, 2)[1] == 1
+            half_window = divmod(window_size, 2)[0]
+            # slide a window across the image
+            for y in range(half_window, image.shape[0]-half_window):
+                for x in range(half_window, image.shape[1]-half_window):
+                    # yield the current window
+                    yield (x, y, image[y-half_window:y + half_window + 1, x-half_window:x + half_window + 1])
+
+        a1 = np.where(self.valid_registration_mask)
+        y_valid_range, x_valid_range = [[a2.min(), a2.max()] for a2 in a1]
+
+        FILTER_SIZE = 5
+        A = []
+        b = []
+        for x, y, window in sliding_window(self.reference_image_registered, FILTER_SIZE):
+            A.append(window.flatten())
+            b.append(self.inspection_image[y, x])
+        x, residuals, rank, s = np.linalg.lstsq(A, b)
+        filter = x.reshape(FILTER_SIZE, FILTER_SIZE)
+        dst = cv2.filter2D(self.reference_image_registered, -1, filter)
+        if self.debug:
+            show_image(self.reference_image_registered, 'translation')
+            show_image(dst, 'subpixel translation')
+        self.reference_image_registered = dst
+        pass
+
 
     def _diff(self):
         # diff_image = relative_diff(self.reference_image_registered, self.inspection_image)
@@ -92,13 +157,33 @@ class DefectDetector:
         return valid_diff_mask
 
     def _post_process(self, mask):
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, self.MORPHOLOGY_SE_SIZE)
-        opening = cv2.morphologyEx(mask.astype(dtype=np.uint8), cv2.MORPH_OPEN, kernel)
-        closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel)
-        if self.debug:
-            show_image(opening)
-            show_image(closing)
-        return closing.astype(np.bool)
+        CONNECTED_COMPONENTS = True
+        if CONNECTED_COMPONENTS:
+            def connected_components(mask, min_size=30):
+                nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=4)
+                sizes = stats[1:, -1]  # remove background
+                nb_components = nb_components - 1  # remove background
+
+                plt.figure()
+                plt.imshow(output, cmap='summer')
+                plt.show()
+
+                output_mask = np.zeros(output.shape, dtype=np.bool)
+                for i in range(0, nb_components):
+                    if sizes[i] >= min_size:
+                        output_mask[output == i + 1] = True
+                return output_mask
+            output = connected_components(mask)
+
+        else:
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, self.MORPHOLOGY_SE_SIZE)
+            opening = cv2.morphologyEx(mask.astype(dtype=np.uint8), cv2.MORPH_OPEN, kernel)
+            closing = cv2.morphologyEx(opening, cv2.MORPH_CLOSE, kernel)
+            output = closing.astype(np.bool)
+            if self.debug:
+                show_image(opening)
+                show_image(closing)
+        return output
 
 
 def main():
