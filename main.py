@@ -65,7 +65,7 @@ class DefectDetector:
         self._register()
         diff_image = self._diff()
         joint_edges_mask = self._joint_edges()
-        JOINT_EDGES_FACTOR = 0.25
+        JOINT_EDGES_FACTOR = 0.2
         diff_image[joint_edges_mask] = diff_image[joint_edges_mask] * JOINT_EDGES_FACTOR
         show_image(diff_image, 'diff image lower joint edges')
         valid_diff_mask = self._diff_binarization(diff_image)
