@@ -31,12 +31,12 @@ First image - two false positives
 ![First image input](input/case1_inspected_image.png)
 ![First image output](output/output-image-idx-0.png)
 
-Second image - perfect detection
+Second image
 
 ![Second image input](input/case2_inspected_image.png)
 ![Second image output](output/output-image-idx-1.png)
 
-Third image - perfect detection
+Third image
 
 ![Third image input](input/case3_inspected_image.png)
 ![Third image output](output/output-image-idx-2.png)
