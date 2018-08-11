@@ -36,3 +36,12 @@ Third image
 ![Third image input](input/case3_inspected_image.png)
 ![Third image output](output/output-image-idx-2.png)
 
+### Additional results
+Step-by-step results for the second image
+
+![](output/image-1-fig-0-input-inspection-image.png)
+![](output/image-1-fig-1-diff-image-after-registration-with-reference.png)
+![](output/image-1-fig-2-dilated-edges-that-appear-on-both-images.png)
+![](output/image-1-fig-3-diff-image-lowered-at-edges.png)
+![](output/image-1-fig-4-diff-mask.png)
+![](output/image-1-fig-5-output:-after-cleaning.png)
