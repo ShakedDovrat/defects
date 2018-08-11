@@ -19,5 +19,3 @@
 ## Assumptions
 1. The transformation between reference and inspection images is translation only (alignment).
 2. Defects have an area of at least 40 pixels.
-3. Defects that are located on edges produce bigger grayscale difference from the reference image than other defects.
-

@@ -3,37 +3,11 @@ import os
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from skimage.filters import apply_hysteresis_threshold
 from skimage.feature import register_translation
 
-from image_registration import TranslationTransform
-
-
-def list_dir_recursive(d):
-    return [os.path.join(dp, f) for dp, dn, fn in os.walk(d) for f in fn]
-
-
-class DataHandler:
-    def __init__(self, images_dir):
-        self.images_dir = images_dir
-        file_paths = list_dir_recursive(self.images_dir)
-        image_paths = [p for p in file_paths if '.tif' in p]
-        self.gt_path = list(set(file_paths) - set(image_paths))[0]
-        reference_images = [p for p in image_paths if 'reference' in p]
-        inspected_images = [p.replace('reference', 'inspected') for p in reference_images]
-        assert set(inspected_images).issubset(set(image_paths))
-        self.image_pairs = list(zip(reference_images, inspected_images))
-
-    def get(self):
-        for image_pair in self.image_pairs:
-            yield [cv2.imread(p, cv2.IMREAD_GRAYSCALE) for p in image_pair]
-
-
-def show_image(image, title=''):
-    plt.figure()
-    plt.imshow(image)
-    plt.title(title)
-    plt.show()
+from utils import TranslationTransform, show_image, DataHandler
 
 
 class DefectDetector:
@@ -72,6 +46,8 @@ class DefectDetector:
             show_image(output_mask, 'output_mask')
             self._save_image(output_mask, 'Output: After cleaning')
             plt.close('all')  # Breakpoint location
+
+        return output_mask
 
     def _register(self):
         shift, _, _ = register_translation(self.inspection_image, self.reference_image, 10)
@@ -119,6 +95,7 @@ class DefectDetector:
     def _post_process(self, mask):
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, self.POST_PROCESS_CLOSE_SE_SIZE)
         close = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel).astype(np.bool)
+        # open = cv2.morphologyEx(close.astype(np.uint8), cv2.MORPH_OPEN, kernel).astype(np.bool)
         if self.debug:
             show_image(close, 'morph close')
         return self._remove_small_connected_components(close)
@@ -150,11 +127,12 @@ class DefectDetector:
 def main():
     images_dir = 'images'
     output_dir = 'output'
-    debug = True
+    debug = False
 
     for image_idx, (reference_image, inspection_image) in enumerate(DataHandler(images_dir).get()):
         detector = DefectDetector(reference_image, inspection_image, image_idx, debug=debug, output_dir=output_dir)
-        detector.run()
+        output_mask = detector.run()
+        plt.imsave(os.path.join(output_dir, 'output-image-idx-{}.png'.format(image_idx)), output_mask, cmap=cm.gray)
 
 
 if __name__ == '__main__':
