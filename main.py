@@ -3,7 +3,7 @@ import os
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from skimage.filters import apply_hysteresis_threshold
+from skimage.filters import apply_hysteresis_threshold, threshold_otsu
 
 from image_registration import ImageAligner, TranslationTransform
 
@@ -49,6 +49,8 @@ class DefectDetector:
     HIGH_DIFF_THRESHOLD = 30
     LOW_DIFF_THRESHOLD = 20
     HIGH_DIFF_THRESHOLD = 40
+    # LOW_DIFF_THRESHOLD = 30
+    # HIGH_DIFF_THRESHOLD = 60
     MORPHOLOGY_SE_SIZE = (3, 3)
 
     def __init__(self, reference_image, inspection_image, debug=False):
@@ -62,9 +64,13 @@ class DefectDetector:
         # self._pre_process()
         self._register()
         diff_image = self._diff()
+        joint_edges_mask = self._joint_edges()
+        JOINT_EDGES_FACTOR = 0.25
+        diff_image[joint_edges_mask] = diff_image[joint_edges_mask] * JOINT_EDGES_FACTOR
+        show_image(diff_image, 'diff image lower joint edges')
         valid_diff_mask = self._diff_binarization(diff_image)
         output_mask = self._post_process(valid_diff_mask)
-        show_image(output_mask)
+        show_image(output_mask, 'output_mask')
 
         print('valid_diff_mask mean = {}'.format(np.mean(valid_diff_mask.flatten())))
         plt.close('all')
@@ -82,8 +88,8 @@ class DefectDetector:
         #     show_image(valid_diff_mask)
         valid_diff_mask = self._diff()
 
-        MORPHOLOGY_SE_SIZE = (5, 5)
         edges = cv2.Canny(self.inspection_image, 100, 200)
+        MORPHOLOGY_SE_SIZE = (5, 5)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, MORPHOLOGY_SE_SIZE)
         cv2.dilate(edges, kernel, edges)
         show_image(edges)
@@ -110,7 +116,7 @@ class DefectDetector:
         alinger = ImageAligner(self.reference_image, self.inspection_image)
         if CROSS_CORELLATION:
             from skimage.feature import register_translation
-            shift, error, diffphase = register_translation(self.inspection_image, self.reference_image, 100)#, space="fourier")
+            shift, error, diffphase = register_translation(self.inspection_image, self.reference_image, 10)#, space="fourier")
             t = TranslationTransform(*reversed(shift))
             alinger.translation_model = t
         else:
@@ -167,7 +173,7 @@ class DefectDetector:
             pass
 
     def _diff(self):
-        DIFF = 'abs'#'abs''rel'
+        DIFF = 'abs'#''normed'
         if DIFF == 'rel':
             self.LOW_DIFF_THRESHOLD = 1.4#1.2
             self.HIGH_DIFF_THRESHOLD = 1.8#1.7
@@ -186,7 +192,7 @@ class DefectDetector:
             diff_image = diff_image / mean_image
         else:
             raise ValueError('')
-        DIFF_REGION = True
+        DIFF_REGION = False
         if DIFF_REGION:
             BLUR_SIZE = 5
             diff_image = cv2.blur(diff_image, (BLUR_SIZE, BLUR_SIZE))
@@ -198,32 +204,61 @@ class DefectDetector:
                 plt.figure()
                 plt.imshow(diff_image, vmin=1.0, vmax=2.0)
                 plt.show()
+        if self.debug:
+            show_image(diff_image, 'diff_image')
+        return diff_image
 
     def _diff_binarization(self, diff_image):
-        diff_mask = apply_hysteresis_threshold(diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
+        OTSU = False
+        if OTSU:
+            threshold = threshold_otsu(diff_image)
+            diff_mask = diff_image > threshold
+        else:
+            diff_mask = apply_hysteresis_threshold(diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
         valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
         if self.debug:
-            show_image(diff_image)
-            show_image(valid_diff_mask)
+            # show_image(diff_image, 'diff_image')
+            show_image(diff_mask, 'diff_mask')
+            # show_image(valid_diff_mask, 'valid_diff_mask')
             print('diff_image mean = {}'.format(np.mean(diff_image.flatten())))
         return valid_diff_mask
+
+    def _joint_edges(self):
+        inspection_edges = DefectDetector._edges_dilate(self.inspection_image)
+        reference_edges = DefectDetector._edges_dilate(self.reference_image_registered)
+        joint_edges_mask = np.logical_and(inspection_edges, reference_edges)
+        if self.debug:
+        #     show_image(inspection_edges, 'inspection_edges')
+        #     show_image(reference_edges, 'reference_edges')
+            show_image(joint_edges_mask, 'joint_edges_mask')
+        return joint_edges_mask
+
+    @staticmethod
+    def _edges_dilate(image):
+        MORPHOLOGY_SE_SIZE = (3, 3)
+
+        edges = cv2.Canny(image, 100, 200)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, MORPHOLOGY_SE_SIZE)
+        cv2.dilate(edges, kernel, edges)
+        return edges
 
     def _post_process(self, mask):
         CONNECTED_COMPONENTS = True
         if CONNECTED_COMPONENTS:
-            def connected_components(mask, min_size=30):
+            def connected_components(mask, min_size=20):
                 nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=4)
                 sizes = stats[1:, -1]  # remove background
                 nb_components = nb_components - 1  # remove background
 
-                plt.figure()
-                plt.imshow(output, cmap='summer')
-                plt.show()
+                # plt.figure()
+                # plt.imshow(output, cmap='summer')
+                # plt.show()
 
                 output_mask = np.zeros(output.shape, dtype=np.bool)
                 for i in range(0, nb_components):
                     if sizes[i] >= min_size:
                         output_mask[output == i + 1] = True
+                show_image(output_mask, 'remove small CCs')
                 return output_mask
             output = connected_components(mask)
 
