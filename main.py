@@ -37,11 +37,13 @@ def show_image(image, title=''):
 
 
 class DefectDetector:
+    CANNY_LOW_THRESHOLD = 100
+    CANNY_HIGH_THRESHOLD = 200
+    EDGES_DILATE_SE_SIZE = (5, 5)
+    JOINT_EDGES_FACTOR = 1/3
     LOW_DIFF_THRESHOLD = 20
     HIGH_DIFF_THRESHOLD = 40
-    MORPHOLOGY_SE_SIZE = (3, 3)
-    EDGES_DILATE_SE_SIZE = (5, 5)
-    JOINT_EDGES_FACTOR = 1 / 3
+    POST_PROCESS_CLOSE_SE_SIZE = (3, 3)
 
     def __init__(self, reference_image, inspection_image, debug=False):
         self.reference_image = reference_image
@@ -54,9 +56,7 @@ class DefectDetector:
         self._register()
         diff_image = self._diff()
         joint_edges_mask = self._joint_edges()
-        diff_image[joint_edges_mask] = diff_image[joint_edges_mask] * self.JOINT_EDGES_FACTOR
-        if self.debug:
-            show_image(diff_image, 'diff image lower joint edges')
+        diff_image = self._lower_diff_at_edges(diff_image, joint_edges_mask)
         valid_diff_mask = self._diff_binarization(diff_image)
         output_mask = self._post_process(valid_diff_mask)
         if self.debug:
@@ -65,7 +65,7 @@ class DefectDetector:
 
     def _register(self):
         shift, _, _ = register_translation(self.inspection_image, self.reference_image, 10)
-        tt = TranslationTransform(*reversed(shift))
+        tt = TranslationTransform(shift[1], shift[0])
         self.reference_image_registered = tt.transform(self.reference_image)
         self.valid_registration_mask = tt.get_valid_mask(self.reference_image.shape)
 
@@ -75,13 +75,6 @@ class DefectDetector:
             show_image(diff_image, 'diff_image')
             print('diff_image mean = {}'.format(np.mean(diff_image.flatten())))
         return diff_image
-
-    def _diff_binarization(self, diff_image):
-        diff_mask = apply_hysteresis_threshold(diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
-        valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
-        if self.debug:
-            show_image(diff_mask, 'diff_mask')
-        return valid_diff_mask
 
     def _joint_edges(self):
         inspection_edges = DefectDetector._edges_dilate(self.inspection_image)
@@ -93,10 +86,30 @@ class DefectDetector:
 
     @staticmethod
     def _edges_dilate(image):
-        edges = cv2.Canny(image, 100, 200)
+        edges = cv2.Canny(image, DefectDetector.CANNY_LOW_THRESHOLD, DefectDetector.CANNY_HIGH_THRESHOLD)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, DefectDetector.EDGES_DILATE_SE_SIZE)
         cv2.dilate(edges, kernel, edges)
         return edges
+
+    def _lower_diff_at_edges(self, diff_image, edges_mask):
+        diff_image[edges_mask] = diff_image[edges_mask] * self.JOINT_EDGES_FACTOR
+        if self.debug:
+            show_image(diff_image, 'diff image lower joint edges')
+        return diff_image
+
+    def _diff_binarization(self, diff_image):
+        diff_mask = apply_hysteresis_threshold(diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
+        valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
+        if self.debug:
+            show_image(valid_diff_mask, 'valid_diff_mask')
+        return valid_diff_mask
+
+    def _post_process(self, mask):
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, self.POST_PROCESS_CLOSE_SE_SIZE)
+        close = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel).astype(np.bool)
+        if self.debug:
+            show_image(close, 'morph close')
+        return self._remove_small_connected_components(close)
 
     def _remove_small_connected_components(self, mask, min_size=40):
         nb_components, output, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
@@ -110,13 +123,6 @@ class DefectDetector:
         if self.debug:
             show_image(output_mask, 'remove small CCs')
         return output_mask
-
-    def _post_process(self, mask):
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, self.MORPHOLOGY_SE_SIZE)
-        close = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel).astype(np.bool)
-        if self.debug:
-            show_image(close, 'morph close')
-        return self._remove_small_connected_components(close)
 
 
 def main():
