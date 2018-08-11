@@ -51,17 +51,19 @@ class DefectDetector:
         self.debug = debug
         self.reference_image_registered = None
         self.valid_registration_mask = None
+        self.diff_image = None
 
     def run(self):
         self._register()
-        diff_image = self._diff()
+        self._diff()
         joint_edges_mask = self._joint_edges()
-        diff_image = self._lower_diff_at_edges(diff_image, joint_edges_mask)
-        valid_diff_mask = self._diff_binarization(diff_image)
+        self._lower_diff_at_edges(joint_edges_mask)
+        valid_diff_mask = self._diff_binarization()
         output_mask = self._post_process(valid_diff_mask)
+
         if self.debug:
             show_image(output_mask, 'output_mask')
-            plt.close('all')
+            plt.close('all')  # Breakpoint location
 
     def _register(self):
         shift, _, _ = register_translation(self.inspection_image, self.reference_image, 10)
@@ -70,11 +72,10 @@ class DefectDetector:
         self.valid_registration_mask = tt.get_valid_mask(self.reference_image.shape)
 
     def _diff(self):
-        diff_image = cv2.absdiff(self.reference_image_registered, self.inspection_image)
+        self.diff_image = cv2.absdiff(self.reference_image_registered, self.inspection_image)
         if self.debug:
-            show_image(diff_image, 'diff_image')
-            print('diff_image mean = {}'.format(np.mean(diff_image.flatten())))
-        return diff_image
+            show_image(self.diff_image, 'diff_image')
+            print('diff_image mean = {}'.format(np.mean(self.diff_image.flatten())))
 
     def _joint_edges(self):
         inspection_edges = DefectDetector._edges_dilate(self.inspection_image)
@@ -91,14 +92,13 @@ class DefectDetector:
         cv2.dilate(edges, kernel, edges)
         return edges
 
-    def _lower_diff_at_edges(self, diff_image, edges_mask):
-        diff_image[edges_mask] = diff_image[edges_mask] * self.JOINT_EDGES_FACTOR
+    def _lower_diff_at_edges(self, edges_mask):
+        self.diff_image[edges_mask] = self.diff_image[edges_mask] * self.JOINT_EDGES_FACTOR
         if self.debug:
-            show_image(diff_image, 'diff image lower joint edges')
-        return diff_image
+            show_image(self.diff_image, 'diff image lower joint edges')
 
-    def _diff_binarization(self, diff_image):
-        diff_mask = apply_hysteresis_threshold(diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
+    def _diff_binarization(self):
+        diff_mask = apply_hysteresis_threshold(self.diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
         valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
         if self.debug:
             show_image(valid_diff_mask, 'valid_diff_mask')
