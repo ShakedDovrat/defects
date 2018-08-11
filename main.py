@@ -28,23 +28,14 @@ class DataHandler:
             yield [cv2.imread(p, cv2.IMREAD_GRAYSCALE) for p in image_pair]
 
 
-class Main:
-    def __init__(self, images_dir='images'):
-        self.data_handler = DataHandler(images_dir)
-
-    def run(self):
-        for reference_image, inspection_image in self.data_handler.get():
-            detector = DefectDetector(reference_image, inspection_image, debug=True)
-            detector.run()
-
-
 def relative_diff(a, b):
     return np.maximum(a, b) / np.minimum(a, b)
 
 
-def show_image(image):
+def show_image(image, title=''):
     plt.figure()
     plt.imshow(image)
+    plt.title(title)
     plt.show()
 
 
@@ -91,7 +82,7 @@ class DefectDetector:
         self.valid_registration_mask = alinger.get_valid_mask(self.reference_image.shape)
 
     def _diff(self):
-        # diff_image = relative_diff(reference_image_registered, self.inspection_image)
+        # diff_image = relative_diff(self.reference_image_registered, self.inspection_image)
         diff_image = cv2.absdiff(self.reference_image_registered, self.inspection_image)
         diff_mask = apply_hysteresis_threshold(diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
         valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
