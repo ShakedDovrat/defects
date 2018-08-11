@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from skimage.filters import apply_hysteresis_threshold
 from skimage.feature import register_translation
 
-from image_registration import ImageAligner, TranslationTransform
+from image_registration import TranslationTransform
 
 
 def list_dir_recursive(d):
@@ -61,17 +61,13 @@ class DefectDetector:
         output_mask = self._post_process(valid_diff_mask)
         if self.debug:
             show_image(output_mask, 'output_mask')
-
-        print('valid_diff_mask mean = {}'.format(np.mean(valid_diff_mask.flatten())))
-        plt.close('all')
+            plt.close('all')
 
     def _register(self):
-        alinger = ImageAligner(self.reference_image, self.inspection_image)
-        shift, error, diffphase = register_translation(self.inspection_image, self.reference_image, 10)
-        t = TranslationTransform(*reversed(shift))
-        alinger.translation_model = t
-        self.reference_image_registered = alinger.transform(self.reference_image)
-        self.valid_registration_mask = alinger.get_valid_mask(self.reference_image.shape)
+        shift, _, _ = register_translation(self.inspection_image, self.reference_image, 10)
+        tt = TranslationTransform(*reversed(shift))
+        self.reference_image_registered = tt.transform(self.reference_image)
+        self.valid_registration_mask = tt.get_valid_mask(self.reference_image.shape)
 
     def _diff(self):
         diff_image = cv2.absdiff(self.reference_image_registered, self.inspection_image)
