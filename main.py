@@ -41,16 +41,8 @@ def show_image(image, title=''):
 
 class DefectDetector:
     MEDIAN_FILTER_SIZE = 3
-    # LOW_DIFF_THRESHOLD = 1.2
-    # HIGH_DIFF_THRESHOLD = 1.7
-    LOW_DIFF_THRESHOLD = 70
-    HIGH_DIFF_THRESHOLD = 110
-    LOW_DIFF_THRESHOLD = 20
-    HIGH_DIFF_THRESHOLD = 30
     LOW_DIFF_THRESHOLD = 20
     HIGH_DIFF_THRESHOLD = 40
-    # LOW_DIFF_THRESHOLD = 30
-    # HIGH_DIFF_THRESHOLD = 60
     MORPHOLOGY_SE_SIZE = (3, 3)
 
     def __init__(self, reference_image, inspection_image, debug=False):
