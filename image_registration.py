@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from skimage.measure import ransac
+import scipy
 
 
 class TranslationTransform:
@@ -78,19 +79,24 @@ class ImageAligner:
                                                  min_samples=1, residual_threshold=0.1, max_trials=200)
 
     def transform(self, image):
-        return cv2.warpPerspective(image, self.translation_model.get_transform_matrix(), list(image.shape).reverse(),
-                                   flags=cv2.INTER_LINEAR)#cv2.INTER_CUBIC)
+        # return cv2.warpPerspective(image, self.translation_model.get_transform_matrix(), list(reversed(image.shape)),
+        #                            flags=cv2.INTER_LINEAR)#cv2.INTER_CUBIC)
+        return scipy.ndimage.interpolation.shift(image, list(reversed(self.translation_model.get_transform_params())))
 
     def get_valid_mask(self, image_shape):
         dx, dy = self.translation_model.get_transform_params()
-        dx, dy = np.int(np.round(dx)), np.int(np.round(dy))
+        # dx, dy = np.int(np.round(dx)), np.int(np.round(dy))
         mask = np.ones(image_shape, dtype=np.bool)
         if dy > 0:
+            dy = np.int(np.ceil(dy))
             mask[:dy, :] = False
         else:
+            dy = np.int(np.floor(dy))
             mask[dy:, :] = False
         if dx > 0:
+            dx = np.int(np.ceil(dx))
             mask[:, :dx] = False
         else:
+            dx = np.int(np.floor(dx))
             mask[:, dx:] = False
         return mask

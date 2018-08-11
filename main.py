@@ -61,7 +61,8 @@ class DefectDetector:
     def run(self):
         # self._pre_process()
         self._register()
-        valid_diff_mask = self._diff()
+        diff_image = self._diff()
+        valid_diff_mask = self._diff_binarization(diff_image)
         output_mask = self._post_process(valid_diff_mask)
         show_image(output_mask)
 
@@ -105,12 +106,12 @@ class DefectDetector:
             show_image(self.inspection_image)
 
     def _register(self):
-        CROSS_CORELLATION = False
+        CROSS_CORELLATION = True
         alinger = ImageAligner(self.reference_image, self.inspection_image)
         if CROSS_CORELLATION:
             from skimage.feature import register_translation
-            shift, error, diffphase = register_translation(self.inspection_image, self.reference_image, 1000)#, space="fourier")
-            t = TranslationTransform(*shift)
+            shift, error, diffphase = register_translation(self.inspection_image, self.reference_image, 100)#, space="fourier")
+            t = TranslationTransform(*reversed(shift))
             alinger.translation_model = t
         else:
             alinger.find_allignment()
@@ -118,42 +119,93 @@ class DefectDetector:
         self.valid_registration_mask = alinger.get_valid_mask(self.reference_image.shape)
 
         # fine-tune translation (sub-pixel):
-        def sliding_window(image, window_size, step_size=1):
-            assert divmod(window_size, 2)[1] == 1
-            half_window = divmod(window_size, 2)[0]
-            # slide a window across the image
-            for y in range(half_window, image.shape[0]-half_window):
-                for x in range(half_window, image.shape[1]-half_window):
-                    # yield the current window
-                    yield (x, y, image[y-half_window:y + half_window + 1, x-half_window:x + half_window + 1])
+        FINE_TUNE = False
+        if FINE_TUNE:
+            def sliding_window(image, window_size, y_valid_range, x_valid_range):
+                dm = divmod(window_size, 2)
+                assert dm[1] == 1
+                half_window = dm[0]
+                # slide a window across the image
+                for y in range(max(half_window, y_valid_range[0]), min(image.shape[0]-half_window, y_valid_range[1])):
+                    for x in range(max(half_window, x_valid_range[0]), min(image.shape[1]-half_window, x_valid_range[1])):
+                        # yield the current window
+                        yield (x, y, image[y-half_window:y + half_window + 1, x-half_window:x + half_window + 1])
 
-        a1 = np.where(self.valid_registration_mask)
-        y_valid_range, x_valid_range = [[a2.min(), a2.max()] for a2 in a1]
+            a1 = np.where(self.valid_registration_mask)
+            y_valid_range, x_valid_range = [[a2.min(), a2.max()] for a2 in a1]
 
-        FILTER_SIZE = 5
-        A = []
-        b = []
-        for x, y, window in sliding_window(self.reference_image_registered, FILTER_SIZE):
-            A.append(window.flatten())
-            b.append(self.inspection_image[y, x])
-        x, residuals, rank, s = np.linalg.lstsq(A, b)
-        filter = x.reshape(FILTER_SIZE, FILTER_SIZE)
-        dst = cv2.filter2D(self.reference_image_registered, -1, filter)
-        if self.debug:
-            show_image(self.reference_image_registered, 'translation')
-            show_image(dst, 'subpixel translation')
-        self.reference_image_registered = dst
-        pass
+            FILTER_SIZE = 5
+            A = []
+            b = []
+            for x, y, window in sliding_window(self.reference_image_registered, FILTER_SIZE, y_valid_range, x_valid_range):
+                A.append(window.flatten())
+                b.append(self.inspection_image[y, x])
 
+            SCIPY_LSTSQ = True
+            if SCIPY_LSTSQ:
+                LOSS = 'soft_l1'#'cauchy'
+                from scipy.optimize import least_squares
+                def fun(x, A, b):
+                    # return x[0] + x[1] * np.exp(x[2] * t) - y
+                    return b - np.matmul(A, x)
+                x0 = np.zeros((FILTER_SIZE, FILTER_SIZE)).flatten()
+                x0[int(x0.size/2)] = 1.0
+                res_log = least_squares(fun, x0, loss=LOSS, args=(np.array(A), np.array(b)))
+                x = res_log.x
+            else:
+                x, residuals, rank, s = np.linalg.lstsq(A, b)
+
+            filter = x.reshape(FILTER_SIZE, FILTER_SIZE)
+            if self.debug:
+                show_image(filter, 'filter')
+
+            dst = cv2.filter2D(self.reference_image_registered, -1, filter)
+            if self.debug:
+                show_image(self.reference_image_registered, 'translation')
+                show_image(dst, 'subpixel translation')
+            self.reference_image_registered = dst
+            pass
 
     def _diff(self):
-        # diff_image = relative_diff(self.reference_image_registered, self.inspection_image)
-        diff_image = cv2.absdiff(self.reference_image_registered, self.inspection_image)
+        DIFF = 'abs'#'abs''rel'
+        if DIFF == 'rel':
+            self.LOW_DIFF_THRESHOLD = 1.4#1.2
+            self.HIGH_DIFF_THRESHOLD = 1.8#1.7
+            diff_image = relative_diff(self.reference_image_registered, self.inspection_image)
+            plt.figure()
+            plt.imshow(diff_image, vmin=1.0, vmax=5.0)
+            plt.show()
+        elif DIFF == 'abs':
+            diff_image = cv2.absdiff(self.reference_image_registered, self.inspection_image)
+        elif DIFF == 'normed':
+            self.LOW_DIFF_THRESHOLD = 0.25
+            self.HIGH_DIFF_THRESHOLD = 0.6
+            diff_image = cv2.absdiff(self.reference_image_registered, self.inspection_image)
+            mean_image = np.mean(np.concatenate((np.expand_dims(self.reference_image_registered, axis=2),
+                                                 np.expand_dims(self.inspection_image, axis=2)), axis=2), axis=2)
+            diff_image = diff_image / mean_image
+        else:
+            raise ValueError('')
+        DIFF_REGION = True
+        if DIFF_REGION:
+            BLUR_SIZE = 5
+            diff_image = cv2.blur(diff_image, (BLUR_SIZE, BLUR_SIZE))
+            NORM_AFTER_REGION = True
+            if NORM_AFTER_REGION:
+                mean_image = np.mean(np.concatenate((np.expand_dims(self.reference_image_registered, axis=2),
+                                                     np.expand_dims(self.inspection_image, axis=2)), axis=2), axis=2)
+                diff_image = diff_image / mean_image
+                plt.figure()
+                plt.imshow(diff_image, vmin=1.0, vmax=2.0)
+                plt.show()
+
+    def _diff_binarization(self, diff_image):
         diff_mask = apply_hysteresis_threshold(diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
         valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
         if self.debug:
             show_image(diff_image)
             show_image(valid_diff_mask)
+            print('diff_image mean = {}'.format(np.mean(diff_image.flatten())))
         return valid_diff_mask
 
     def _post_process(self, mask):
