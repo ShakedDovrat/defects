@@ -45,15 +45,21 @@ class DefectDetector:
     HIGH_DIFF_THRESHOLD = 40
     POST_PROCESS_CLOSE_SE_SIZE = (3, 3)
 
-    def __init__(self, reference_image, inspection_image, debug=False):
+    def __init__(self, reference_image, inspection_image, image_idx, debug=False, output_dir=None):
         self.reference_image = reference_image
         self.inspection_image = inspection_image
-        self.debug = debug
+        self.image_idx = image_idx
         self.reference_image_registered = None
         self.valid_registration_mask = None
         self.diff_image = None
 
+        self.debug = debug
+        self.debug_images = []
+        self.output_dir = output_dir
+
     def run(self):
+        if self.debug:
+            self._save_image(self.inspection_image, 'Input inspection image')
         self._register()
         self._diff()
         joint_edges_mask = self._joint_edges()
@@ -63,6 +69,7 @@ class DefectDetector:
 
         if self.debug:
             show_image(output_mask, 'output_mask')
+            self._save_image(output_mask, 'Output: After cleaning')
             plt.close('all')  # Breakpoint location
 
     def _register(self):
@@ -76,6 +83,7 @@ class DefectDetector:
         if self.debug:
             show_image(self.diff_image, 'diff_image')
             print('diff_image mean = {}'.format(np.mean(self.diff_image.flatten())))
+            self._save_image(np.copy(self.diff_image), 'Diff image after registration with reference')
 
     def _joint_edges(self):
         inspection_edges = DefectDetector._edges_dilate(self.inspection_image)
@@ -83,6 +91,7 @@ class DefectDetector:
         joint_edges_mask = np.logical_and(inspection_edges, reference_edges)
         if self.debug:
             show_image(joint_edges_mask, 'joint_edges_mask')
+            self._save_image(joint_edges_mask, 'Dilated edges that appear on both images')
         return joint_edges_mask
 
     @staticmethod
@@ -96,12 +105,14 @@ class DefectDetector:
         self.diff_image[edges_mask] = self.diff_image[edges_mask] * self.JOINT_EDGES_FACTOR
         if self.debug:
             show_image(self.diff_image, 'diff image lower joint edges')
+            self._save_image(np.copy(self.diff_image), 'Diff image, lowered at edges')
 
     def _diff_binarization(self):
         diff_mask = apply_hysteresis_threshold(self.diff_image, self.LOW_DIFF_THRESHOLD, self.HIGH_DIFF_THRESHOLD)
         valid_diff_mask = np.bitwise_and(diff_mask, self.valid_registration_mask)
         if self.debug:
             show_image(valid_diff_mask, 'valid_diff_mask')
+            self._save_image(valid_diff_mask, 'Diff mask')
         return valid_diff_mask
 
     def _post_process(self, mask):
@@ -124,13 +135,24 @@ class DefectDetector:
             show_image(output_mask, 'remove small CCs')
         return output_mask
 
+    def _save_image(self, image, title):
+        fig = plt.figure()
+        plt.imshow(image)
+        plt.title(title)
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        file_name = 'output-idx-{}-{}.png'.format(self.image_idx, title.lower().replace(' ', '-').replace(',', ''))
+        plt.savefig(os.path.join(self.output_dir, file_name))
+        plt.close(fig)
+
 
 def main():
     images_dir = 'images'
+    output_dir = 'output'
     debug = True
 
-    for reference_image, inspection_image in DataHandler(images_dir).get():
-        detector = DefectDetector(reference_image, inspection_image, debug=debug)
+    for image_idx, (reference_image, inspection_image) in enumerate(DataHandler(images_dir).get()):
+        detector = DefectDetector(reference_image, inspection_image, image_idx, debug=debug, output_dir=output_dir)
         detector.run()
 
 
