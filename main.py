@@ -31,6 +31,7 @@ class DefectDetector:
         self.debug = debug
         self.debug_images = []
         self.output_dir = output_dir
+        self.figures_count = 0
 
     def run(self):
         if self.debug:
@@ -119,15 +120,18 @@ class DefectDetector:
         plt.title(title)
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
-        file_name = 'output-idx-{}-{}.png'.format(self.image_idx, title.lower().replace(' ', '-').replace(',', ''))
+        file_name = 'image-{}-fig-{}-{}.png'.format(self.image_idx,
+                                                    self.figures_count,
+                                                    title.lower().replace(' ', '-').replace(',', ''))
         plt.savefig(os.path.join(self.output_dir, file_name))
         plt.close(fig)
+        self.figures_count += 1
 
 
 def main():
     images_dir = 'images'
     output_dir = 'output'
-    debug = False
+    debug = True
 
     for image_idx, (reference_image, inspection_image) in enumerate(DataHandler(images_dir).get()):
         detector = DefectDetector(reference_image, inspection_image, image_idx, debug=debug, output_dir=output_dir)
