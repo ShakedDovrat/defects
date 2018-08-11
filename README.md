@@ -1,4 +1,4 @@
-## Steps
+## Solution
 1. Registration
     1. Find sub-pixel translation using cross correlation on upsampled images.
     2. Transform the reference image to the inspection image. 
@@ -11,7 +11,7 @@
     4. Give the diff image a factor penalty in edge-pixels.
 4. Binarize diff image
     1. Perform a 2D hysteresis thresholding.
-    2. Turn off pixels in locations that are invalid due to the translation.
+    2. (Turn off pixels in locations that are invalid due to the translation.)
 5. Clean output mask
     1. Perform a morphological close.
     2. Remove small connected components.
