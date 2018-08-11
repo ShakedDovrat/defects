@@ -1,6 +1,6 @@
 ## Assumptions
 1. Registration between reference and inspection images is translation only.
-2. There are sufficient interest points in the images in order to find transformation.
+2. Defects have an area of at least 40 pixels
 
 ## Steps
 1. Pre-process - Median filter

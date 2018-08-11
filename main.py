@@ -44,6 +44,7 @@ class DefectDetector:
     LOW_DIFF_THRESHOLD = 20
     HIGH_DIFF_THRESHOLD = 40
     POST_PROCESS_CLOSE_SE_SIZE = (3, 3)
+    MIN_CONNECTED_COMPONENT_SIZE = 40
 
     def __init__(self, reference_image, inspection_image, image_idx, debug=False, output_dir=None):
         self.reference_image = reference_image
@@ -122,14 +123,14 @@ class DefectDetector:
             show_image(close, 'morph close')
         return self._remove_small_connected_components(close)
 
-    def _remove_small_connected_components(self, mask, min_size=40):
+    def _remove_small_connected_components(self, mask):
         nb_components, output, stats, _ = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
         sizes = stats[1:, -1]  # remove background
         nb_components = nb_components - 1  # remove background
 
         output_mask = np.zeros(output.shape, dtype=np.bool)
         for i in range(0, nb_components):
-            if sizes[i] >= min_size:
+            if sizes[i] >= self.MIN_CONNECTED_COMPONENT_SIZE:
                 output_mask[output == i + 1] = True
         if self.debug:
             show_image(output_mask, 'remove small CCs')
